@@ -10,7 +10,11 @@
         h1 { font-size: 1.5em; border-bottom: 2px solid #005eb8; padding-bottom: 10px; color: #005eb8; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
         label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9em; }
-        input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; transition: 0.3s; }
+        
+        /* Clasa nouă care înroșește căsuța obligatorie */
+        .needs-update { background-color: #ffe6e6 !important; border: 2px solid #ff4444 !important; }
+        
         .stats-box { background: #eef2f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #005eb8; }
         .log-console { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 15px; height: 300px; overflow-y: auto; border-radius: 4px; margin-bottom: 20px; }
         .log-console p { margin: 2px 0; font-size: 0.9em; }
@@ -37,8 +41,9 @@
             <input type="text" id="urlCampanie" placeholder="https://www.emag.ro/label/id/sort-discountdesc/">
         </div>
         <div>
-            <label>Total Produse pe Site</label>
-            <input type="number" id="totalProduse" value="168825" oninput="calculeazaEstimari()">
+            <label>Total Produse pe Site (Actualizare Obligatorie)</label>
+            <!-- Adăugată clasa needs-update și curățarea ei la tastare (oninput) -->
+            <input type="number" id="totalProduse" class="needs-update" oninput="marcheazaActualizat(); calculeazaEstimari();" placeholder="Introdu numărul curent">
         </div>
         <div>
             <label>Produse per pagină</label>
@@ -74,9 +79,9 @@
     </div>
 
     <div class="buttons">
-        <button id="btnStart" onclick="startScan()">Start Nou</button>
+        <button id="btnStart" onclick="startScan()">Start Nou (Resetează)</button>
         <button id="btnPause" onclick="pauseScan()" disabled>Pauză</button>
-        <button id="btnResume" onclick="resumeScan()" disabled>Reia de la ultima pagină</button>
+        <button id="btnResume" onclick="resumeScan()" disabled>Reia de la pagina curentă</button>
     </div>
 </div>
 
@@ -99,13 +104,18 @@
         consola.scrollTop = consola.scrollHeight;
     }
 
+    // Curăță culoarea roșie când tastezi noul număr de produse
+    function marcheazaActualizat() {
+        document.getElementById('totalProduse').classList.remove('needs-update');
+    }
+
     function calculeazaEstimari() {
         const totalProd = parseInt(document.getElementById('totalProduse').value) || 0;
         const perPagina = parseInt(document.getElementById('produsePagina').value) || 60;
         const delayMax = parseInt(document.getElementById('delayMax').value) || 0;
 
         const paginiTotale = Math.ceil(totalProd / perPagina);
-        paginiDeScanat = Math.floor(paginiTotale * 0.95); // Marja de 95%
+        paginiDeScanat = Math.floor(paginiTotale * 0.95); 
         const timpSecunde = paginiDeScanat * delayMax;
         const timpMinute = Math.ceil(timpSecunde / 60);
 
@@ -114,8 +124,20 @@
         document.getElementById('statTimp').innerText = timpMinute + " minute";
     }
 
-    // Calculăm estimările la încărcarea paginii
-    window.onload = calculeazaEstimari;
+    window.onload = () => {
+        calculeazaEstimari();
+        
+        const urlSalvat = localStorage.getItem('emag_url');
+        const paginaSalvata = localStorage.getItem('emag_pagina');
+        
+        if (urlSalvat) document.getElementById('urlCampanie').value = urlSalvat;
+        
+        if (paginaSalvata && parseInt(paginaSalvata) > 1) {
+            paginaCurenta = parseInt(paginaSalvata);
+            log(`💾 Sesiune anterioară găsită. Actualizează numărul de produse și reia scanarea de la pagina ${paginaCurenta}.`);
+            document.getElementById('btnResume').disabled = false;
+        }
+    };
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
@@ -124,7 +146,18 @@
     function updateButtons(running) {
         document.getElementById('btnStart').disabled = running;
         document.getElementById('btnPause').disabled = !running;
-        document.getElementById('btnResume').disabled = running && paginaCurenta > 1;
+        document.getElementById('btnResume').disabled = running || paginaCurenta <= 1;
+    }
+
+    // Funcție de protecție: verifică dacă ai actualizat numărul înainte să lase scriptul să plece
+    function verificaActualizare() {
+        const inputProduse = document.getElementById('totalProduse');
+        if (inputProduse.classList.contains('needs-update') || !inputProduse.value) {
+            log("⚠️ Actualizează numărul total de produse înainte de a scana!", "error");
+            inputProduse.focus();
+            return false;
+        }
+        return true;
     }
 
     async function executaScanare() {
@@ -135,11 +168,13 @@
 
         if (!urlBaza) { log("Eroare: Introdu URL-ul campaniei!", "error"); isRunning = false; updateButtons(false); return; }
 
+        localStorage.setItem('emag_url', urlBaza);
+
         while (paginaCurenta <= paginiDeScanat && isRunning) {
             log(`Procesez Pagina ${paginaCurenta}...`);
+            localStorage.setItem('emag_pagina', paginaCurenta);
             
             try {
-                // Apelăm Muncitorul (Google Apps Script)
                 const fetchUrl = `${API_URL}?url=${encodeURIComponent(urlBaza)}&page=${paginaCurenta}&threshold=${discount}`;
                 const response = await fetch(fetchUrl);
                 const data = await response.json();
@@ -149,12 +184,15 @@
                 } else if (data.status === 'end') {
                     log(`Campania s-a terminat prematur la pagina ${paginaCurenta}. 🟢`);
                     isRunning = false;
+                    localStorage.removeItem('emag_pagina');
                     break;
                 } else {
                     log(`Eroare la Pagina ${paginaCurenta}: ${data.message} 🔴`, "error");
                 }
             } catch (err) {
-                log(`Eroare de conexiune la Pagina ${paginaCurenta}. Reîncercare necesară. 🔴`, "error");
+                log(`Eroare de conexiune la Pagina ${paginaCurenta}. Oprim temporar pentru siguranță. 🔴`, "error");
+                isRunning = false;
+                break;
             }
 
             if (!isRunning) break;
@@ -171,31 +209,40 @@
         if (paginaCurenta > paginiDeScanat) {
             log("Scanare completă pentru marja de 95%! 🟢");
             isRunning = false;
+            localStorage.removeItem('emag_pagina');
         }
         updateButtons(false);
     }
 
     function startScan() {
+        if (!verificaActualizare()) return; // Blochează execuția dacă e roșu
+        
         calculeazaEstimari();
         paginaCurenta = 1;
+        localStorage.setItem('emag_pagina', 1);
         isRunning = true;
         updateButtons(true);
-        document.getElementById('logConsole').innerHTML = ''; // Curățăm log-ul
-        log("Începere scanare nouă...");
+        document.getElementById('logConsole').innerHTML = '';
+        log("Începere scanare de la zero...");
         executaScanare();
     }
 
     function pauseScan() {
         isRunning = false;
-        log(`Scanare pusă pe pauză la pagina ${paginaCurenta}. 🟠`);
+        // La punerea pe pauză, căsuța devine roșie din nou pentru a te forța să actualizezi înainte de reluare
+        document.getElementById('totalProduse').classList.add('needs-update');
+        log(`⏸️ Scanare pusă pe pauză la pagina ${paginaCurenta}. Actualizează numărul de produse înainte de a relua!`);
         updateButtons(false);
     }
 
     function resumeScan() {
+        if (!verificaActualizare()) return; // Blochează execuția dacă e roșu
         if (paginaCurenta > paginiDeScanat) return;
+        
+        calculeazaEstimari();
         isRunning = true;
         updateButtons(true);
-        log(`Reluare scanare de la pagina ${paginaCurenta}...`);
+        log(`▶️ Reluare scanare de la pagina ${paginaCurenta}...`);
         executaScanare();
     }
 </script>
