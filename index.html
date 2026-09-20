@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner Oferte eMag (>50%)</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5em; border-bottom: 2px solid #005eb8; padding-bottom: 10px; color: #005eb8; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
+        label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9em; }
+        input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .stats-box { background: #eef2f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #005eb8; }
+        .log-console { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 15px; height: 300px; overflow-y: auto; border-radius: 4px; margin-bottom: 20px; }
+        .log-console p { margin: 2px 0; font-size: 0.9em; }
+        .log-error { color: #ff5555; }
+        .buttons { display: flex; gap: 10px; }
+        button { padding: 10px 20px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; transition: 0.3s; }
+        #btnStart { background: #28a745; }
+        #btnStart:hover { background: #218838; }
+        #btnPause { background: #ffc107; color: black; }
+        #btnPause:hover { background: #e0a800; }
+        #btnResume { background: #17a2b8; }
+        #btnResume:hover { background: #138496; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Scanner Oferte eMag (>50%)</h1>
+    
+    <div class="grid">
+        <div>
+            <label>URL Bază Campanie (fără pagină)</label>
+            <input type="text" id="urlCampanie" placeholder="https://www.emag.ro/label/id/sort-discountdesc/">
+        </div>
+        <div>
+            <label>Total Produse pe Site</label>
+            <input type="number" id="totalProduse" value="168825" oninput="calculeazaEstimari()">
+        </div>
+        <div>
+            <label>Produse per pagină</label>
+            <select id="produsePagina" onchange="calculeazaEstimari()">
+                <option value="60" selected>60 Produse</option>
+                <option value="80">80 Produse</option>
+                <option value="100">100 Produse</option>
+            </select>
+        </div>
+        <div>
+            <label>Discount Minim (%)</label>
+            <input type="number" id="discountMinim" value="50">
+        </div>
+        <div>
+            <label>Delay Minim (Secunde)</label>
+            <input type="number" id="delayMin" value="2" oninput="calculeazaEstimari()">
+        </div>
+        <div>
+            <label>Delay Maxim (Secunde)</label>
+            <input type="number" id="delayMax" value="5" oninput="calculeazaEstimari()">
+        </div>
+    </div>
+
+    <div class="stats-box">
+        <strong>Statistici Scanare:</strong><br>
+        Pagini Totale: <span id="statPaginiTotale">0</span> | 
+        Pagini de Scanat (Marjă 95%): <strong id="statPaginiScanat">0</strong><br>
+        Timp Estimat Maxim: <strong id="statTimp">0 minute</strong>
+    </div>
+
+    <div class="log-console" id="logConsole">
+        <p>Așteptare inițializare...</p>
+    </div>
+
+    <div class="buttons">
+        <button id="btnStart" onclick="startScan()">Start Nou</button>
+        <button id="btnPause" onclick="pauseScan()" disabled>Pauză</button>
+        <button id="btnResume" onclick="resumeScan()" disabled>Reia de la ultima pagină</button>
+    </div>
+</div>
+
+<script>
+    // --- LINK-UL TĂU API CĂTRE GOOGLE SHEETS ESTE INTEGRAT AICI ---
+    const API_URL = "https://script.google.com/macros/s/AKfycbxhCYyXVSufhw4gPuNwdtg0W0VpUET_WAzVvkhJh48wHN5c9EzUezwlBfG0J8PsgUkqNw/exec"; 
+    // --------------------------------------------------------------
+
+    let isRunning = false;
+    let paginaCurenta = 1;
+    let paginiDeScanat = 0;
+
+    function log(mesaj, tip = 'info') {
+        const consola = document.getElementById('logConsole');
+        const ora = new Date().toLocaleTimeString('ro-RO');
+        const p = document.createElement('p');
+        p.innerHTML = `[${ora}] ${mesaj}`;
+        if (tip === 'error') p.className = 'log-error';
+        consola.appendChild(p);
+        consola.scrollTop = consola.scrollHeight;
+    }
+
+    function calculeazaEstimari() {
+        const totalProd = parseInt(document.getElementById('totalProduse').value) || 0;
+        const perPagina = parseInt(document.getElementById('produsePagina').value) || 60;
+        const delayMax = parseInt(document.getElementById('delayMax').value) || 0;
+
+        const paginiTotale = Math.ceil(totalProd / perPagina);
+        paginiDeScanat = Math.floor(paginiTotale * 0.95); // Marja de 95%
+        const timpSecunde = paginiDeScanat * delayMax;
+        const timpMinute = Math.ceil(timpSecunde / 60);
+
+        document.getElementById('statPaginiTotale').innerText = paginiTotale;
+        document.getElementById('statPaginiScanat').innerText = paginiDeScanat;
+        document.getElementById('statTimp').innerText = timpMinute + " minute";
+    }
+
+    // Calculăm estimările la încărcarea paginii
+    window.onload = calculeazaEstimari;
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    function updateButtons(running) {
+        document.getElementById('btnStart').disabled = running;
+        document.getElementById('btnPause').disabled = !running;
+        document.getElementById('btnResume').disabled = running && paginaCurenta > 1;
+    }
+
+    async function executaScanare() {
+        const urlBaza = document.getElementById('urlCampanie').value.trim();
+        const discount = document.getElementById('discountMinim').value;
+        const dMin = parseInt(document.getElementById('delayMin').value) * 1000;
+        const dMax = parseInt(document.getElementById('delayMax').value) * 1000;
+
+        if (!urlBaza) { log("Eroare: Introdu URL-ul campaniei!", "error"); isRunning = false; updateButtons(false); return; }
+
+        while (paginaCurenta <= paginiDeScanat && isRunning) {
+            log(`Procesez Pagina ${paginaCurenta}...`);
+            
+            try {
+                // Apelăm Muncitorul (Google Apps Script)
+                const fetchUrl = `${API_URL}?url=${encodeURIComponent(urlBaza)}&page=${paginaCurenta}&threshold=${discount}`;
+                const response = await fetch(fetchUrl);
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    log(`Pagina ${paginaCurenta} finalizată. Produse noi adăugate: ${data.added} 🟢`);
+                } else if (data.status === 'end') {
+                    log(`Campania s-a terminat prematur la pagina ${paginaCurenta}. 🟢`);
+                    isRunning = false;
+                    break;
+                } else {
+                    log(`Eroare la Pagina ${paginaCurenta}: ${data.message} 🔴`, "error");
+                }
+            } catch (err) {
+                log(`Eroare de conexiune la Pagina ${paginaCurenta}. Reîncercare necesară. 🔴`, "error");
+            }
+
+            if (!isRunning) break;
+
+            paginaCurenta++;
+            
+            if (paginaCurenta <= paginiDeScanat) {
+                const delayCurent = Math.floor(Math.random() * (dMax - dMin + 1)) + dMin;
+                log(`Aștept ${delayCurent / 1000}s pentru a evita radarul eMag...`);
+                await sleep(delayCurent);
+            }
+        }
+
+        if (paginaCurenta > paginiDeScanat) {
+            log("Scanare completă pentru marja de 95%! 🟢");
+            isRunning = false;
+        }
+        updateButtons(false);
+    }
+
+    function startScan() {
+        calculeazaEstimari();
+        paginaCurenta = 1;
+        isRunning = true;
+        updateButtons(true);
+        document.getElementById('logConsole').innerHTML = ''; // Curățăm log-ul
+        log("Începere scanare nouă...");
+        executaScanare();
+    }
+
+    function pauseScan() {
+        isRunning = false;
+        log(`Scanare pusă pe pauză la pagina ${paginaCurenta}. 🟠`);
+        updateButtons(false);
+    }
+
+    function resumeScan() {
+        if (paginaCurenta > paginiDeScanat) return;
+        isRunning = true;
+        updateButtons(true);
+        log(`Reluare scanare de la pagina ${paginaCurenta}...`);
+        executaScanare();
+    }
+</script>
+</body>
+</html>
