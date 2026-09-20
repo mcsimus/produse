@@ -11,15 +11,12 @@
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
         label { font-weight: bold; display: block; margin-bottom: 5px; font-size: 0.9em; }
         input, select { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; transition: 0.3s; }
-        
-        /* Clasa nouă care înroșește căsuța obligatorie */
         .needs-update { background-color: #ffe6e6 !important; border: 2px solid #ff4444 !important; }
-        
         .stats-box { background: #eef2f5; padding: 15px; border-radius: 6px; margin-bottom: 20px; border-left: 4px solid #005eb8; }
         .log-console { background: #1e1e1e; color: #00ff00; font-family: monospace; padding: 15px; height: 300px; overflow-y: auto; border-radius: 4px; margin-bottom: 20px; }
         .log-console p { margin: 2px 0; font-size: 0.9em; }
         .log-error { color: #ff5555; }
-        .buttons { display: flex; gap: 10px; }
+        .buttons { display: flex; gap: 10px; flex-wrap: wrap; }
         button { padding: 10px 20px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; color: white; transition: 0.3s; }
         #btnStart { background: #28a745; }
         #btnStart:hover { background: #218838; }
@@ -27,6 +24,8 @@
         #btnPause:hover { background: #e0a800; }
         #btnResume { background: #17a2b8; }
         #btnResume:hover { background: #138496; }
+        #btnReset { background: #dc3545; }
+        #btnReset:hover { background: #c82333; }
         button:disabled { background: #ccc; cursor: not-allowed; }
     </style>
 </head>
@@ -42,7 +41,6 @@
         </div>
         <div>
             <label>Total Produse pe Site (Actualizare Obligatorie)</label>
-            <!-- Adăugată clasa needs-update și curățarea ei la tastare (oninput) -->
             <input type="number" id="totalProduse" class="needs-update" oninput="marcheazaActualizat(); calculeazaEstimari();" placeholder="Introdu numărul curent">
         </div>
         <div>
@@ -79,9 +77,10 @@
     </div>
 
     <div class="buttons">
-        <button id="btnStart" onclick="startScan()">Start Nou (Resetează)</button>
+        <button id="btnStart" onclick="startScan()">Start Nou</button>
         <button id="btnPause" onclick="pauseScan()" disabled>Pauză</button>
         <button id="btnResume" onclick="resumeScan()" disabled>Reia de la pagina curentă</button>
+        <button id="btnReset" onclick="stergeMemoria()">Șterge Memoria</button>
     </div>
 </div>
 
@@ -104,7 +103,6 @@
         consola.scrollTop = consola.scrollHeight;
     }
 
-    // Curăță culoarea roșie când tastezi noul număr de produse
     function marcheazaActualizat() {
         document.getElementById('totalProduse').classList.remove('needs-update');
     }
@@ -139,6 +137,13 @@
         }
     };
 
+    function stergeMemoria() {
+        localStorage.removeItem('emag_pagina');
+        paginaCurenta = 1;
+        document.getElementById('btnResume').disabled = true;
+        log("🧹 Memoria paginilor a fost ștearsă. Următoarea scanare va începe de la pagina 1.");
+    }
+
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -147,9 +152,9 @@
         document.getElementById('btnStart').disabled = running;
         document.getElementById('btnPause').disabled = !running;
         document.getElementById('btnResume').disabled = running || paginaCurenta <= 1;
+        document.getElementById('btnReset').disabled = running;
     }
 
-    // Funcție de protecție: verifică dacă ai actualizat numărul înainte să lase scriptul să plece
     function verificaActualizare() {
         const inputProduse = document.getElementById('totalProduse');
         if (inputProduse.classList.contains('needs-update') || !inputProduse.value) {
@@ -215,8 +220,7 @@
     }
 
     function startScan() {
-        if (!verificaActualizare()) return; // Blochează execuția dacă e roșu
-        
+        if (!verificaActualizare()) return; 
         calculeazaEstimari();
         paginaCurenta = 1;
         localStorage.setItem('emag_pagina', 1);
@@ -229,16 +233,14 @@
 
     function pauseScan() {
         isRunning = false;
-        // La punerea pe pauză, căsuța devine roșie din nou pentru a te forța să actualizezi înainte de reluare
         document.getElementById('totalProduse').classList.add('needs-update');
         log(`⏸️ Scanare pusă pe pauză la pagina ${paginaCurenta}. Actualizează numărul de produse înainte de a relua!`);
         updateButtons(false);
     }
 
     function resumeScan() {
-        if (!verificaActualizare()) return; // Blochează execuția dacă e roșu
+        if (!verificaActualizare()) return; 
         if (paginaCurenta > paginiDeScanat) return;
-        
         calculeazaEstimari();
         isRunning = true;
         updateButtons(true);
