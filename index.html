@@ -124,10 +124,8 @@
 
     window.onload = () => {
         calculeazaEstimari();
-        
         const urlSalvat = localStorage.getItem('emag_url');
         const paginaSalvata = localStorage.getItem('emag_pagina');
-        
         if (urlSalvat) document.getElementById('urlCampanie').value = urlSalvat;
         
         if (paginaSalvata && parseInt(paginaSalvata) > 1) {
@@ -192,11 +190,19 @@
                     localStorage.removeItem('emag_pagina');
                     break;
                 } else {
+                    // PAUZĂ AUTOMATĂ LA EROARE / CAPTCHA
                     log(`Eroare la Pagina ${paginaCurenta}: ${data.message} 🔴`, "error");
+                    document.getElementById('totalProduse').classList.add('needs-update');
+                    isRunning = false;
+                    log(`⏸️ Scanare oprită automat din cauza blocajului. Apasă Reluare când problema este remediată.`);
+                    break;
                 }
             } catch (err) {
-                log(`Eroare de conexiune la Pagina ${paginaCurenta}. Oprim temporar pentru siguranță. 🔴`, "error");
+                // PAUZĂ AUTOMATĂ LA EROARE DE REȚEA
+                log(`Eroare de conexiune la Pagina ${paginaCurenta}. 🔴`, "error");
+                document.getElementById('totalProduse').classList.add('needs-update');
                 isRunning = false;
+                log(`⏸️ Scanare oprită automat din cauza conexiunii.`);
                 break;
             }
 
